@@ -96,6 +96,30 @@ func (s *testSuite) TestToString3(c *C) {
 	c.Assert(str == check || str == check2, Equals, true)
 }
 
+func (s *testSuite) TestToStringLimit1(c *C) {
+
+	out := map[string]string{
+		"first": "long-string-for-tests",
+	}
+	check := `map[string]string{"first":"long-"}`
+
+	str := ToString(out, 5)
+
+	c.Assert(str, Equals, check)
+}
+
+func (s *testSuite) TestToStringByteArray(c *C) {
+
+	out := map[string][]byte{
+		"first": []byte(`\o"g-string-for-\"tests`),
+	}
+	check := `map[string][]uint8{"first":[]uint8("\\o\"g-")}`
+
+	str := ToString(out, 5)
+
+	c.Assert(str, Equals, check)
+}
+
 func (s *testSuite) TestFullFunctionName(c *C) {
 	w := New().FunctionName("CountByStatus").MockType("*mmock.MockIVerification")
 	c.Assert(w.FullFunctionName(), Equals, "MockIVerificationCountByStatus")

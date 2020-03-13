@@ -1,6 +1,7 @@
 package onefunction
 
 import (
+	"fmt"
 	"log"
 	"reflect"
 	"strconv"
@@ -41,9 +42,10 @@ type Data struct {
 }
 
 type MyWriter struct {
-	inOutValue   *Calls
-	functionName string
-	mockType     string
+	inOutValue      *Calls
+	functionName    string
+	mockType        string
+	maxStringLength int
 }
 
 const tmpl = `func MockIVerification{{.FunctionName}}(m {{.MMockType}}) {{.MMockType}} {
@@ -72,12 +74,18 @@ func (w *Collector) Write(p []byte) (n int, err error) {
 
 func New() *MyWriter {
 	return &MyWriter{
-		inOutValue: NewOneCall(),
+		inOutValue:      NewOneCall(),
+		maxStringLength: -1,
 	}
 }
 
 func (w *MyWriter) Add(params, result []interface{}) *MyWriter {
 	w.inOutValue.Add(params, result)
+	return w
+}
+
+func (w *MyWriter) StringLimit(maxStringLength int) *MyWriter {
+	w.maxStringLength = maxStringLength
 	return w
 }
 
@@ -98,19 +106,27 @@ func (w *MyWriter) MockType(mockType string) *MyWriter {
 }
 
 func Escape(s string) string {
-	//s = strings.ReplaceAll(s, `"`, `\"`)
-	//s = strings.ReplaceAll(s, "\n", `\n`)
 	return strconv.Quote(s)
 }
 
-func ToString(i interface{}) string {
+func limitString(s string, limit int) string {
+	if limit == -1 || len(s) <= limit {
+		return s
+	}
+
+	return s[:limit]
+}
+
+func ToString(i interface{}, limit ...int) string {
 	if i == nil {
 		return "nil"
 	}
-	return _toString(reflect.ValueOf(i))
+
+	limit = append(limit, -1)
+	return _toString(reflect.ValueOf(i), limit[0])
 }
 
-func _toString(v reflect.Value) string {
+func _toString(v reflect.Value, limit int) string {
 
 	typ := v.Type()
 	addPointer := ""
@@ -124,13 +140,15 @@ func _toString(v reflect.Value) string {
 		addPointer = "&"
 	}
 
+	fmt.Printf("typ.Kind() : %+v\n", typ.Kind())
+
 	switch typ.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return strconv.FormatInt(v.Int(), 10)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return strconv.FormatUint(v.Uint(), 10)
 	case reflect.String:
-		return Escape(v.String())
+		return Escape(limitString(v.String(), limit))
 	case reflect.Bool:
 		return strconv.FormatBool(v.Bool())
 	case reflect.Float64:
@@ -141,10 +159,14 @@ func _toString(v reflect.Value) string {
 		return "nil"
 	}
 
+	fmt.Printf(" typ.String() : %s\n", typ.String())
+
 	//
 	switch typ.String() {
 	case "time.Time":
 		return Escape(v.Interface().(time.Time).Format(TimeFormat))
+	case "[]uint8":
+		return "[]uint8(" + Escape(limitString(string(v.Interface().([]byte)), limit)) + ")"
 	}
 
 	if v.Kind() == reflect.Struct {
@@ -154,9 +176,9 @@ func _toString(v reflect.Value) string {
 		for i := 0; i < typ.NumField(); i++ {
 			p := typ.Field(i)
 			if !p.Anonymous {
-				out[i] = _toString(v.Field(i))
+				out[i] = _toString(v.Field(i), limit)
 			} else { // Anonymus structues
-				out[i] = _toString(v.Field(i).Addr())
+				out[i] = _toString(v.Field(i).Addr(), limit)
 			}
 		}
 
@@ -171,7 +193,7 @@ func _toString(v reflect.Value) string {
 
 		out := make([]string, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			out[i] = _toString(v.Index(i))
+			out[i] = _toString(v.Index(i), limit)
 		}
 		return t + "{" + strings.Join(out, ", ") + "}"
 	}
@@ -186,7 +208,7 @@ func _toString(v reflect.Value) string {
 
 		out := make([]string, len(keys))
 		for i, key := range keys {
-			out[i] = _toString(key) + `:` + _toString(v.MapIndex(key))
+			out[i] = _toString(key, -1) + `:` + _toString(v.MapIndex(key), limit)
 		}
 		return t + "{" + strings.Join(out, ", ") + "}"
 	}

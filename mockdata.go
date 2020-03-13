@@ -5,7 +5,6 @@ package mockdata
 */
 
 import (
-	"fmt"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -74,14 +73,21 @@ type Maker struct {
 	Constructor   string
 	MockType      string
 
+	maxStringLength int
+
 	functions map[string]map[string]*onefunction.MyWriter
 }
 
 func New() *Maker {
 	return &Maker{
-		LocalPackages: []string{`"github.com/golang/mock/gomock"`, `"testing"`},
-		functions:     map[string]map[string]*onefunction.MyWriter{},
+		maxStringLength: -1,
+		LocalPackages:   []string{`"github.com/golang/mock/gomock"`, `"testing"`},
+		functions:       map[string]map[string]*onefunction.MyWriter{},
 	}
+}
+
+func (m *Maker) StringLimit(maxStringLength int) *Maker {
+	m.maxStringLength = maxStringLength
 }
 
 func (m *Maker) SetMMock(mMock interface{}) *Maker {
@@ -92,9 +98,6 @@ func (m *Maker) SetMMock(mMock interface{}) *Maker {
 	m.Constructor = mFuncName
 	m.MockType = mOutType
 
-	fmt.Printf("\n------------------------\n\n\nm.Constructor: --%s--\n\n\n------------------------\n", m.Constructor)
-	fmt.Printf("\n------------------------\n\n\nm.MockType: --%s--\n\n\n------------------------\n", m.MockType)
-
 	return m
 }
 
@@ -104,7 +107,6 @@ func (m *Maker) StartFunction(object interface{}) *Maker {
 	m.LocalPackages = append(m.LocalPackages, pkg)
 	m.currentFunction = funcName
 
-	fmt.Printf("\n------------------------\n\n\nfuncName: --%s--\n\n\n------------------------\n", funcName)
 	return m
 }
 
@@ -116,6 +118,7 @@ func (m *Maker) InOut(in, out []interface{}) *Maker {
 
 	if _, find := m.functions[m.MockType][m.currentFunction]; !find {
 		m.functions[m.MockType][m.currentFunction] = onefunction.New().
+			StringLimit(m.maxStringLength).
 			FunctionName(m.currentFunction).
 			MockType(m.MockType)
 	}
@@ -129,22 +132,12 @@ func (m *Maker) Code() string {
 
 	functionBodies := make([]string, 0)
 	functionCalls := make([]string, 0)
-	for mockName, functions := range m.functions {
-		for funcName, w := range functions {
-
-			fmt.Printf("generate %s/%s", mockName, funcName)
-
+	for _, functions := range m.functions {
+		for _, w := range functions {
 			functionCalls = append(functionCalls, w.FullFunctionName())
 			functionBodies = append(functionBodies, w.Code())
-
-			fmt.Printf("functionCalls::: %+v\n", functionCalls)
-			fmt.Printf("functionBodies::: %+v\n", functionBodies)
 		}
 	}
-
-	//for i := range m.LocalPackages {
-	//	m.LocalPackages[i] = strconv.Quote(m.LocalPackages[i])
-	//}
 
 	data := &Data{
 		FunctionBodies: functionBodies,
@@ -161,9 +154,6 @@ func (m *Maker) Code() string {
 		log.Panic(err)
 	}
 
-	fmt.Printf("\n\n")
-	fmt.Printf("%s", string(wr.data))
-	fmt.Printf("\n\n")
 	return string(wr.data)
 }
 
@@ -192,11 +182,6 @@ func SplitFunctionObject(i interface{}, checkResult bool) (string, string, strin
 	pkg := `"` + filepath.Join(dir, parts[0]) + `"`
 	funcParts := strings.SplitN(parts[len(parts)-1], "-", 2)
 	funcName := funcParts[0]
-
-	fmt.Printf("\n\n-----------------\nSplitFunctionObject >>>>>>>>\n\n")
-	fmt.Printf("pkg: %s\n", pkg)
-	fmt.Printf("funcName: %s\n", funcName)
-	fmt.Printf("out.outType: %s\n", outType)
 
 	return pkg, funcName, outType
 }
