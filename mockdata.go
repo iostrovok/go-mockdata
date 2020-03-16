@@ -64,7 +64,7 @@ type Data struct {
 	MockType       string
 }
 
-type Maker struct {
+type Recorder struct {
 	mMock           interface{}
 	object          interface{}
 	currentFunction string
@@ -79,20 +79,20 @@ type Maker struct {
 	functions map[string]map[string]*onefunction.MyWriter
 }
 
-func New() *Maker {
-	return &Maker{
+func New() *Recorder {
+	return &Recorder{
 		maxStringLength: -1,
 		LocalPackages:   []string{`"github.com/golang/mock/gomock"`, `"testing"`},
 		functions:       map[string]map[string]*onefunction.MyWriter{},
 	}
 }
 
-func (m *Maker) StringLimit(maxStringLength int) *Maker {
+func (m *Recorder) StringLimit(maxStringLength int) *Recorder {
 	m.maxStringLength = maxStringLength
 	return m
 }
 
-func (m *Maker) SetMMock(mMock interface{}) *Maker {
+func (m *Recorder) SetMMock(mMock interface{}) *Recorder {
 	m.mMock = mMock
 
 	pkg, mFuncName, mOutType := SplitFunctionObject(m.mMock, true)
@@ -103,7 +103,7 @@ func (m *Maker) SetMMock(mMock interface{}) *Maker {
 	return m
 }
 
-func (m *Maker) StartFunction(object interface{}) *Maker {
+func (m *Recorder) StartFunction(object interface{}) *Recorder {
 	m.object = object
 	pkg, funcName, _ := SplitFunctionObject(m.object, false)
 	m.LocalPackages = append(m.LocalPackages, pkg)
@@ -112,7 +112,7 @@ func (m *Maker) StartFunction(object interface{}) *Maker {
 	return m
 }
 
-func (m *Maker) InOut(in, out []interface{}) *Maker {
+func (m *Recorder) Add(in, out []interface{}) *Recorder {
 
 	if _, find := m.functions[m.MockType]; !find {
 		m.functions[m.MockType] = map[string]*onefunction.MyWriter{}
@@ -130,12 +130,12 @@ func (m *Maker) InOut(in, out []interface{}) *Maker {
 	return m
 }
 
-func (m *Maker) Save(fileName string) error {
+func (m *Recorder) Save(fileName string) error {
 	return ioutil.WriteFile(fileName, []byte(m.Code()), 0666)
 }
 
 // Code returns
-func (m *Maker) Code() string {
+func (m *Recorder) Code() string {
 
 	functionBodies := make([]string, 0)
 	functionCalls := make([]string, 0)
@@ -164,7 +164,7 @@ func (m *Maker) Code() string {
 	return string(wr.data)
 }
 
-func (m *Maker) Clean() {
+func (m *Recorder) Clean() {
 	m.mMock = nil
 	m.object = nil
 	m.currentFunction = ""

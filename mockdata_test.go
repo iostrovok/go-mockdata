@@ -62,13 +62,13 @@ func (s *testSuite) TestFunctions(c *C) {
 
 	// store FirstFunc parameters and result - "func NewMockIOne(ctrl *gomock.Controller) *MockIOne"
 	res, err := one.FirstFunc(str)
-	m.StartFunction(one.FirstFunc).InOut([]interface{}{str}, []interface{}{res, err})
+	m.StartFunction(one.FirstFunc).Add([]interface{}{str}, []interface{}{res, err})
 
 	// store SecondFunc multi parameters and result
 	m.StartFunction(one.SecondFunc)
 	for _, s := range []string{str, str2} {
 		res, err := one.SecondFunc(s)
-		m.InOut([]interface{}{s}, []interface{}{res, err})
+		m.Add([]interface{}{s}, []interface{}{res, err})
 	}
 
 	// out GO-code. We may just to save to file with m.Save(fileName)
