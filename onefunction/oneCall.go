@@ -45,13 +45,13 @@ func (c *Calls) Add(params, result []interface{}) *Calls {
 	return c
 }
 
-func (c *Calls) ToStr() []StrCalls {
+func (c *Calls) ToStr(userFunc SaveStringFunc) []StrCalls {
 
 	calls := make([]StrCalls, len(c.inOut))
 	for i, p := range c.inOut {
 		calls[i] = StrCalls{
-			Result:       inOutCode(p.result),
-			Params:       inOutCode(p.params),
+			Result:       inOutCode(p.result, userFunc),
+			Params:       inOutCode(p.params, userFunc),
 			FunctionName: c.functionName,
 		}
 	}
@@ -59,10 +59,10 @@ func (c *Calls) ToStr() []StrCalls {
 	return calls
 }
 
-func inOutCode(in []interface{}) string {
+func inOutCode(in []interface{}, userFunc SaveStringFunc) string {
 	out := make([]string, len(in))
 	for i, v := range in {
-		out[i] = ToString(v)
+		out[i] = ToString(v, userFunc)
 	}
 	return strings.Join(out, ", ")
 }

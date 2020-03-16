@@ -2,7 +2,9 @@ package onefunction
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
+	"time"
 
 	. "github.com/iostrovok/check"
 
@@ -55,7 +57,7 @@ func (s *testSuite) TestToString1(c *C) {
 	}
 	check := `[]*testdata.CountGroups{&testdata.CountGroups{9, 0}, &testdata.CountGroups{10, 1}}`
 
-	str := ToString(out)
+	str := ToString(out, nil)
 
 	c.Assert(str, Equals, check)
 }
@@ -75,7 +77,7 @@ func (s *testSuite) TestToString2(c *C) {
 	check := `map[string]*testdata.CountGroups{"two":&testdata.CountGroups{10, 1}, "one":&testdata.CountGroups{9, 0}}`
 	check2 := `map[string]*testdata.CountGroups{"one":&testdata.CountGroups{9, 0}, "two":&testdata.CountGroups{10, 1}}`
 
-	str := ToString(out)
+	str := ToString(out, nil)
 
 	fmt.Printf("str: %s\n", str)
 
@@ -91,7 +93,7 @@ func (s *testSuite) TestToString3(c *C) {
 	check := `map[int][]bool{0:[]bool{true, false}, 2:[]bool{true, false, false}}`
 	check2 := `map[int][]bool{2:[]bool{true, false, false}, 0:[]bool{true, false}}`
 
-	str := ToString(out)
+	str := ToString(out, nil)
 
 	c.Assert(str == check || str == check2, Equals, true)
 }
@@ -103,7 +105,32 @@ func (s *testSuite) TestToStringLimit1(c *C) {
 	}
 	check := `map[string]string{"first":"long-"}`
 
-	str := ToString(out, 5)
+	str := ToString(out, nil, 5)
+
+	c.Assert(str, Equals, check)
+}
+
+func (s *testSuite) TestToStringUserFunc1(c *C) {
+
+	t, err := time.Parse("2006-01-02T15:04:05", "2020-03-20T15:04:05")
+	c.Assert(err, IsNil)
+	c.Assert(t, NotNil)
+
+	out := map[string]interface{}{
+		"first": "long-string-for-tests",
+		"time":  t,
+	}
+	check := `map[string]interface {}{"first":"long-string-for-tests", "time":"2020-03-20"}`
+
+	var f SaveStringFunc = func(v reflect.Value, limit int) (string, bool) {
+		if v.Type().String() == "time.Time" {
+			return Escape(v.Interface().(time.Time).Format("2006-01-02")), true
+		}
+
+		return "", false
+	}
+
+	str := ToString(out, f)
 
 	c.Assert(str, Equals, check)
 }
@@ -115,7 +142,7 @@ func (s *testSuite) TestToStringByteArray(c *C) {
 	}
 	check := `map[string][]uint8{"first":[]uint8("\\o\"g-")}`
 
-	str := ToString(out, 5)
+	str := ToString(out, nil, 5)
 
 	c.Assert(str, Equals, check)
 }

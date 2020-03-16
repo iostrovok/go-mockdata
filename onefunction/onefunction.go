@@ -14,6 +14,8 @@ import (
 	Simple package for fill mocker with data
 */
 
+type SaveStringFunc func(v reflect.Value, limit int) (res string, find bool)
+
 const (
 	tplCode = `
 func {{.FullFunctionName}}(m {{.MockType}}) {{.MockType}} {
@@ -46,6 +48,7 @@ type MyWriter struct {
 	functionName    string
 	mockType        string
 	maxStringLength int
+	userFunc        SaveStringFunc
 }
 
 const tmpl = `func MockIVerification{{.FunctionName}}(m {{.MMockType}}) {{.MMockType}} {
@@ -77,6 +80,11 @@ func New() *MyWriter {
 		inOutValue:      NewOneCall(),
 		maxStringLength: -1,
 	}
+}
+
+func (w *MyWriter) SaveStringFunc(userFunc SaveStringFunc) *MyWriter {
+	w.userFunc = userFunc
+	return w
 }
 
 func (w *MyWriter) Add(params, result []interface{}) *MyWriter {
@@ -117,16 +125,16 @@ func limitString(s string, limit int) string {
 	return s[:limit]
 }
 
-func ToString(i interface{}, limit ...int) string {
+func ToString(i interface{}, userFunc SaveStringFunc, limit ...int) string {
 	if i == nil {
 		return "nil"
 	}
 
 	limit = append(limit, -1)
-	return _toString(reflect.ValueOf(i), limit[0])
+	return _toString(reflect.ValueOf(i), userFunc, limit[0])
 }
 
-func _toString(v reflect.Value, limit int) string {
+func _toString(v reflect.Value, userFunc SaveStringFunc, limit int) string {
 
 	typ := v.Type()
 	addPointer := ""
@@ -140,7 +148,17 @@ func _toString(v reflect.Value, limit int) string {
 		addPointer = "&"
 	}
 
-	fmt.Printf("typ.Kind() : %+v\n", typ.Kind())
+	if userFunc != nil {
+		if str, find := userFunc(v, limit); find {
+			fmt.Printf("v: %v, limit: %d\n", v, limit)
+			fmt.Printf("str: %s, find: %t\n", str, find)
+			return str
+		}
+	}
+
+	if typ.String() == "interface {}" {
+		return _toString(reflect.ValueOf(v.Interface()), userFunc, limit)
+	}
 
 	switch typ.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -159,8 +177,6 @@ func _toString(v reflect.Value, limit int) string {
 		return "nil"
 	}
 
-	fmt.Printf(" typ.String() : %s\n", typ.String())
-
 	//
 	switch typ.String() {
 	case "time.Time":
@@ -176,9 +192,9 @@ func _toString(v reflect.Value, limit int) string {
 		for i := 0; i < typ.NumField(); i++ {
 			p := typ.Field(i)
 			if !p.Anonymous {
-				out[i] = _toString(v.Field(i), limit)
+				out[i] = _toString(v.Field(i), userFunc, limit)
 			} else { // Anonymus structues
-				out[i] = _toString(v.Field(i).Addr(), limit)
+				out[i] = _toString(v.Field(i).Addr(), userFunc, limit)
 			}
 		}
 
@@ -193,7 +209,7 @@ func _toString(v reflect.Value, limit int) string {
 
 		out := make([]string, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			out[i] = _toString(v.Index(i), limit)
+			out[i] = _toString(v.Index(i), userFunc, limit)
 		}
 		return t + "{" + strings.Join(out, ", ") + "}"
 	}
@@ -208,7 +224,7 @@ func _toString(v reflect.Value, limit int) string {
 
 		out := make([]string, len(keys))
 		for i, key := range keys {
-			out[i] = _toString(key, -1) + `:` + _toString(v.MapIndex(key), limit)
+			out[i] = _toString(key, nil, -1) + `:` + _toString(v.MapIndex(key), userFunc, limit)
 		}
 		return t + "{" + strings.Join(out, ", ") + "}"
 	}
@@ -222,7 +238,7 @@ func (w *MyWriter) Code() string {
 		MockType:         w.mockType,
 		FunctionName:     w.functionName,
 		FullFunctionName: w.FullFunctionName(),
-		Calls:            w.inOutValue.ToStr(),
+		Calls:            w.inOutValue.ToStr(w.userFunc),
 	}
 
 	wr := &Collector{
