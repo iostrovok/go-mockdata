@@ -1,5 +1,5 @@
-github.com/golang/mock v1.4.1 h1:ocYkMQY5RrXTYgXl7ICpV0IXwlEQGwKIsery4gyXa1U=
-github.com/golang/mock v1.4.1/go.mod h1:UOMv5ysSaYNkG+OFQykRIcU/QvvxJf3p21QfJ2Bt3cw=
+github.com/golang/mock v1.4.3 h1:GV+pQPG/EUUbkh47niozDcADz6go/dUwhVzdUQHIVRw=
+github.com/golang/mock v1.4.3/go.mod h1:UOMv5ysSaYNkG+OFQykRIcU/QvvxJf3p21QfJ2Bt3cw=
 github.com/iostrovok/check v0.0.6 h1:Lm69GRXHHVMUu9t6doHSTeCYRp5X2/LOU31aiTljYz8=
 github.com/iostrovok/check v0.0.6/go.mod h1:YBxymzpfuHxSYv1eB7GruBDj1Y6IUJXiHElnAt1VVdE=
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=

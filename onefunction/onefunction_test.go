@@ -112,15 +112,34 @@ func (s *testSuite) TestToStringLimit1(c *C) {
 
 func (s *testSuite) TestToStringUserFunc1(c *C) {
 
+	out := map[string]interface{}{
+		"first": "long-string-for-tests",
+	}
+	check := `map[string]interface {}{"first":"long-string-for-tests"}`
+
+	var f SaveStringFunc = func(v reflect.Value, limit int) (string, bool) {
+		if v.Type().String() == "time.Time" {
+			return Escape(v.Interface().(time.Time).Format("2006-01-02")), true
+		}
+
+		return "", false
+	}
+
+	str := ToString(out, f)
+
+	c.Assert(str, Equals, check)
+}
+
+func (s *testSuite) TestToStringUserFunc2(c *C) {
+
 	t, err := time.Parse("2006-01-02T15:04:05", "2020-03-20T15:04:05")
 	c.Assert(err, IsNil)
 	c.Assert(t, NotNil)
 
 	out := map[string]interface{}{
-		"first": "long-string-for-tests",
-		"time":  t,
+		"time": t,
 	}
-	check := `map[string]interface {}{"first":"long-string-for-tests", "time":"2020-03-20"}`
+	check := `map[string]interface {}{"time":"2020-03-20"}`
 
 	var f SaveStringFunc = func(v reflect.Value, limit int) (string, bool) {
 		if v.Type().String() == "time.Time" {
