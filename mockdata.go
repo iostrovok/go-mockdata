@@ -5,6 +5,7 @@ package mockdata
 */
 
 import (
+	"io/ioutil"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -88,6 +89,7 @@ func New() *Maker {
 
 func (m *Maker) StringLimit(maxStringLength int) *Maker {
 	m.maxStringLength = maxStringLength
+	return m
 }
 
 func (m *Maker) SetMMock(mMock interface{}) *Maker {
@@ -128,6 +130,11 @@ func (m *Maker) InOut(in, out []interface{}) *Maker {
 	return m
 }
 
+func (m *Maker) Save(fileName string) error {
+	return ioutil.WriteFile(fileName, []byte(m.Code()), 0666)
+}
+
+// Code returns
 func (m *Maker) Code() string {
 
 	functionBodies := make([]string, 0)
@@ -157,8 +164,15 @@ func (m *Maker) Code() string {
 	return string(wr.data)
 }
 
-type functionParts struct {
-	pkg, f, outType string
+func (m *Maker) Clean() {
+	m.mMock = nil
+	m.object = nil
+	m.currentFunction = ""
+	m.lastCall = nil
+	m.LocalPackages = make([]string, 0)
+	m.Constructor = ""
+	m.MockType = ""
+	m.functions = map[string]map[string]*onefunction.MyWriter{}
 }
 
 func SplitFunctionObject(i interface{}, checkResult bool) (string, string, string) {

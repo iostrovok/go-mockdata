@@ -1,7 +1,6 @@
 package mockdata
 
 import (
-	"fmt"
 	"testing"
 
 	. "github.com/iostrovok/check"
@@ -50,28 +49,33 @@ func MockIOneSecondFunc(m *mmock.MockIOne) *mmock.MockIOne {
 
 func (s *testSuite) TestFunctions(c *C) {
 
+	// Object which provides data for results
 	one := tc.New()
 
-	fmt.Printf("one: %+v\n", one)
-
-	// function for mock
+	// NewMockIOne is a function return mock
+	//
 	m := New().SetMMock(mmock.NewMockIOne)
+	defer m.Clean()
 
 	str := "To be or not to be"
 	str2 := "William Shakespeare"
 
-	// save one function data
-	m.StartFunction(one.FirstFunc)
-	out, err := one.FirstFunc(str)
-	m.InOut([]interface{}{str}, []interface{}{out, err})
+	// store FirstFunc parameters and result - "func NewMockIOne(ctrl *gomock.Controller) *MockIOne"
+	res, err := one.FirstFunc(str)
+	m.StartFunction(one.FirstFunc).InOut([]interface{}{str}, []interface{}{res, err})
 
+	// store SecondFunc multi parameters and result
 	m.StartFunction(one.SecondFunc)
 	for _, s := range []string{str, str2} {
 		res, err := one.SecondFunc(s)
 		m.InOut([]interface{}{s}, []interface{}{res, err})
 	}
 
-	fmt.Printf("\n\n" + m.Code() + "\n\n")
+	// out GO-code. We may just to save to file with m.Save(fileName)
+	code := m.Code()
 
-	c.Assert(m.Code(), Equals, res1)
+	// close current cycle of saving for MockIOne
+	m.Clean()
+
+	c.Assert(code, Equals, res1)
 }
