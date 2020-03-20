@@ -23,7 +23,7 @@ deps:
 	@$(ENV) GO111MODULE=on go get github.com/dizzyfool/genna@latest
 	@$(ENV) GO111MODULE=on go get github.com/go-pg/migrations/v7@latest
 
-test: tests-onefunction tests-mockdata
+test: tests-imports tests-onefunction tests-receivers tests-mockdata
 
 tests-onefunction:
 	@echo "Run 'tests-onefunction' race test for ./onefunction/..."
@@ -33,6 +33,13 @@ tests-mockdata:
 	@echo "Run 'tests-mockdata' race test for ./..."
 	cd $(LOCDIR)/ && $(DIR) $(GODEBUG) go test -cover -race ./...
 
+tests-receivers:
+	@echo "Run 'tests-receivers' race test for ./receivers/..."
+	cd $(LOCDIR)/receivers/ && $(DIR) $(GODEBUG) go test -cover -race ./...
+
+tests-imports:
+	@echo "Run 'tests-imports' race test for ./imports/..."
+	cd $(LOCDIR)/imports/ && $(DIR) $(GODEBUG) go test -cover -race ./...
 
 mod:
 	@echo "======================================================================"
@@ -53,5 +60,5 @@ clean-cache:
 
 
 mock-gen:
-	GO111MODULE=on ./bin/mockgen -package mmock github.com/iostrovok/go-mockdata/test-code IOne > ./test-code/mmock/ione_mock.go
+	GO111MODULE=on ./bin/mockgen -package mmock  -destination ./test-code/mmock/ione_mock.go -source ./test-code/main.go IOne
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/iostrovok/go-mockdata/receivers"
 )
 
 /*
@@ -49,6 +51,7 @@ type MyWriter struct {
 	mockType        string
 	maxStringLength int
 	userFunc        SaveStringFunc
+	ParserResult    receivers.OneFunctionRes
 }
 
 const tmpl = `func MockIVerification{{.FunctionName}}(m {{.MMockType}}) {{.MMockType}} {
@@ -80,6 +83,11 @@ func New() *MyWriter {
 		inOutValue:      NewOneCall(),
 		maxStringLength: -1,
 	}
+}
+
+func (w *MyWriter) SetParserResult(parserResult receivers.OneFunctionRes) *MyWriter {
+	w.ParserResult = parserResult
+	return w
 }
 
 func (w *MyWriter) SaveStringFunc(userFunc SaveStringFunc) *MyWriter {
@@ -234,11 +242,14 @@ func _toString(v reflect.Value, userFunc SaveStringFunc, limit int) string {
 
 func (w *MyWriter) Code() string {
 
+	fmt.Printf("Code:Params: %+v\n", w.ParserResult.Params)
+	fmt.Printf("Code:Results: %+v\n", w.ParserResult.Results)
+
 	data := &Data{
 		MockType:         w.mockType,
 		FunctionName:     w.functionName,
 		FullFunctionName: w.FullFunctionName(),
-		Calls:            w.inOutValue.ToStr(w.userFunc),
+		Calls:            w.inOutValue.ToStr(w.userFunc, w.ParserResult),
 	}
 
 	wr := &Collector{

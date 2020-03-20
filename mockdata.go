@@ -5,6 +5,8 @@ package mockdata
 */
 
 import (
+	"fmt"
+	"go/format"
 	"io/ioutil"
 	"log"
 	"path/filepath"
@@ -17,7 +19,9 @@ import (
 
 	"github.com/golang/mock/gomock"
 
+	"github.com/iostrovok/go-mockdata/imports"
 	"github.com/iostrovok/go-mockdata/onefunction"
+	"github.com/iostrovok/go-mockdata/receivers"
 )
 
 const tplCode = `
@@ -70,9 +74,11 @@ type Recorder struct {
 	currentFunction string
 	lastCall        *onefunction.MyWriter
 
-	LocalPackages []string
-	Constructor   string
-	MockType      string
+	Imports      *imports.Imports
+	Parser       *receivers.Parser
+	ParserResult receivers.OneFunctionRes
+	Constructor  string
+	MockType     string
 
 	maxStringLength int
 
@@ -80,9 +86,17 @@ type Recorder struct {
 }
 
 func New() *Recorder {
+
+	im := imports.New()
+	im.Add("testing", "")
+	im.Add("github.com/golang/mock/gomock", "")
+
+	par := receivers.New(im)
+
 	return &Recorder{
 		maxStringLength: -1,
-		LocalPackages:   []string{`"github.com/golang/mock/gomock"`, `"testing"`},
+		Imports:         im,
+		Parser:          par,
 		functions:       map[string]map[string]*onefunction.MyWriter{},
 	}
 }
@@ -95,19 +109,47 @@ func (m *Recorder) StringLimit(maxStringLength int) *Recorder {
 func (m *Recorder) SetMMock(mMock interface{}) *Recorder {
 	m.mMock = mMock
 
-	pkg, mFuncName, mOutType := SplitFunctionObject(m.mMock, true)
-	m.LocalPackages = append(m.LocalPackages, pkg)
-	m.Constructor = mFuncName
-	m.MockType = mOutType
+	value := reflect.ValueOf(mMock)
+	if value.Kind() != reflect.Func {
+		panic("should be function")
+	}
+
+	ctrl := gomock.NewController(&testing.T{})
+	res := value.Call([]reflect.Value{reflect.ValueOf(ctrl)})
+	m.MockType = res[0].Type().String()
+
+	ofr := m.Parser.Run(mMock)
+
+	fmt.Printf("SetMMock .......... m.MockType: %s\n", m.MockType)
+	fmt.Printf("SetMMock .......... ofr.Params: %+v\n", ofr)
+
+	dir, file := filepath.Split(runtime.FuncForPC(value.Pointer()).Name())
+
+	parts := strings.SplitN(file, ".", 3)
+	pkgName := parts[0]
+
+	m.Imports.Add(filepath.Join(dir, pkgName), "")
+	m.Constructor = ofr.FuncName
 
 	return m
 }
 
 func (m *Recorder) StartFunction(object interface{}) *Recorder {
 	m.object = object
-	pkg, funcName, _ := SplitFunctionObject(m.object, false)
-	m.LocalPackages = append(m.LocalPackages, pkg)
-	m.currentFunction = funcName
+
+	value := reflect.ValueOf(object)
+	if value.Kind() != reflect.Func {
+		panic("should be function")
+	}
+
+	m.ParserResult = m.Parser.Run(object)
+
+	// set package / alias for setup local vars
+	m.Imports.SetCurrentPackage(m.ParserResult.Pkg)
+
+	fmt.Printf("StartFunction .......... ofr.Params: %+v\n", m.ParserResult)
+	fmt.Printf("StartFunction .......... ofr.Params: %+v\n", m.Imports.List())
+	m.currentFunction = m.ParserResult.FuncName
 
 	return m
 }
@@ -123,8 +165,10 @@ func (m *Recorder) Add(in, out []interface{}) *Recorder {
 			StringLimit(m.maxStringLength).
 			FunctionName(m.currentFunction).
 			MockType(m.MockType)
+
 	}
 
+	m.functions[m.MockType][m.currentFunction].SetParserResult(m.ParserResult)
 	m.functions[m.MockType][m.currentFunction].Add(in, out)
 
 	return m
@@ -149,7 +193,7 @@ func (m *Recorder) Code() string {
 	data := &Data{
 		FunctionBodies: functionBodies,
 		FunctionCalls:  functionCalls,
-		LocalPackages:  uniqStrArray(m.LocalPackages),
+		LocalPackages:  m.Imports.List(),
 		Constructor:    m.Constructor,
 		MockType:       m.MockType,
 	}
@@ -161,21 +205,60 @@ func (m *Recorder) Code() string {
 		log.Panic(err)
 	}
 
-	return string(wr.data)
+	src, err := format.Source(wr.data)
+	if err != nil {
+		log.Fatalf("Failed to format generated source code: %s\n", err)
+	}
+
+	return string(src)
 }
 
 func (m *Recorder) Clean() {
+	m.Imports = imports.New()
+	m.Imports.Add("testing", "")
+	m.Imports.Add("github.com/golang/mock/gomock", "")
+
+	m.Parser = receivers.New(m.Imports)
+	m.ParserResult = receivers.OneFunctionRes{}
+
 	m.mMock = nil
 	m.object = nil
 	m.currentFunction = ""
 	m.lastCall = nil
-	m.LocalPackages = make([]string, 0)
 	m.Constructor = ""
 	m.MockType = ""
 	m.functions = map[string]map[string]*onefunction.MyWriter{}
 }
 
-func SplitFunctionObject(i interface{}, checkResult bool) (string, string, string) {
+func (m *Recorder) SplitFunctionObject(i interface{}, checkResult bool) (string, string) {
+
+	value := reflect.ValueOf(i)
+	if value.Kind() != reflect.Func {
+		panic("should be function")
+	}
+
+	outType := ""
+	if checkResult {
+		ctrl := gomock.NewController(&testing.T{})
+		res := value.Call([]reflect.Value{reflect.ValueOf(ctrl)})
+		outType = res[0].Type().String()
+	}
+
+	m.ParserResult = m.Parser.Run(i)
+
+	dir, file := filepath.Split(runtime.FuncForPC(value.Pointer()).Name())
+
+	parts := strings.SplitN(file, ".", 3)
+
+	pkgName := parts[0]
+
+	m.Imports.Add(filepath.Join(dir, pkgName), "")
+	funcName := m.ParserResult.FuncName
+
+	return funcName, outType
+}
+
+func (m *Recorder) SplitFunctionObject_old(i interface{}, checkResult bool) (string, string, string) {
 
 	value := reflect.ValueOf(i)
 	if value.Kind() != reflect.Func {
@@ -193,7 +276,12 @@ func SplitFunctionObject(i interface{}, checkResult bool) (string, string, strin
 
 	parts := strings.SplitN(file, ".", 3)
 
-	pkg := `"` + filepath.Join(dir, parts[0]) + `"`
+	pkgName := parts[0]
+	fmt.Printf("pkgName: %s\n", pkgName)
+	fmt.Printf("runtime.FuncForPC(value.Pointer()).Name(): %s\n", runtime.FuncForPC(value.Pointer()).Name())
+	fmt.Printf("filepath.Split(runtime.FuncForPC(value.Pointer()).Entry(): %+v\n", runtime.FuncForPC(value.Pointer()).Entry())
+
+	pkg := `"` + filepath.Join(dir, pkgName) + `"`
 	funcParts := strings.SplitN(parts[len(parts)-1], "-", 2)
 	funcName := funcParts[0]
 
