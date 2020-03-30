@@ -23,7 +23,11 @@ deps:
 	@$(ENV) GO111MODULE=on go get github.com/dizzyfool/genna@latest
 	@$(ENV) GO111MODULE=on go get github.com/go-pg/migrations/v7@latest
 
-test: tests-imports tests-onefunction tests-receivers tests-mockdata
+test: tests-imports tests-pkparser tests-onefunction tests-receivers tests-mockdata
+
+tests-pkparser:
+	@echo "Run 'tests-pkparser' race test for ./pkparser/..."
+	cd $(LOCDIR)/pkparser/ && $(DIR) $(GODEBUG) go test -cover -race ./...
 
 tests-onefunction:
 	@echo "Run 'tests-onefunction' race test for ./onefunction/..."
@@ -40,6 +44,10 @@ tests-receivers:
 tests-imports:
 	@echo "Run 'tests-imports' race test for ./imports/..."
 	cd $(LOCDIR)/imports/ && $(DIR) $(GODEBUG) go test -cover -race ./...
+
+tests-tool:
+	@echo "Run 'tests-tool' race test for ./tool/..."
+	cd $(LOCDIR)/tool/ && $(DIR) $(GODEBUG) go test -cover -race ./...
 
 mod:
 	@echo "======================================================================"

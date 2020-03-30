@@ -7,181 +7,179 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-
-	"github.com/iostrovok/go-mockdata/imports/inter"
 )
 
 /*
 	Simple package for fill mocker with data
 */
 
-type PkParser struct {
-	sync.RWMutex
-
-	parsed []*ast.Package
-	srcDir string
-	imp    inter.IImp
+type ParsedFile struct {
+	file    *ast.File
+	pkgName string
+	path    string
+	srcDir  string
+	srcFile string
 }
 
-func New(srcDir string, imp inter.IImp) *PkParser {
+type PkParser struct {
+	parsedFiles map[string]*ParsedFile
+
+	srcDir    string
+	parsedDir map[string]bool
+	viewDebug bool
+
+	deep int
+}
+
+func NewParser(srcDir string) *PkParser {
 	return &PkParser{
-		srcDir: srcDir,
-		parsed: make([]*ast.Package, 0),
-		imp:    imp,
+		srcDir:      srcDir,
+		parsedFiles: map[string]*ParsedFile{},
+		parsedDir:   map[string]bool{},
+		deep:        3,
 	}
 }
 
-func (pkp *PkParser) ByFile(fileName string) (*ast.Package, bool) {
+func (pkp *PkParser) SetDeep(deep int) *PkParser {
+	pkp.deep = deep
+	return pkp
+}
 
-	for _, p := range pkp.parsed {
-		if _, find := p.Files[fileName]; find {
-			return p, true
+func (pkp *PkParser) SetDebug(viewDebug bool) *PkParser {
+	pkp.viewDebug = viewDebug
+	return pkp
+}
+
+func (pkp *PkParser) debug(format string, d ...interface{}) {
+	if pkp.viewDebug {
+		fmt.Printf(format, d...)
+	}
+}
+
+func (pkp *PkParser) setPathByDir(src, path string) {
+	for f := range pkp.parsedFiles {
+		if strings.Index(f, src) == 0 {
+			pkp.parsedFiles[f].path = path
 		}
 	}
-	return nil, false
 }
 
-func extractPackageNamByFile(fileName string) (string, error) {
-	src, err := parser.ParseFile(token.NewFileSet(), fileName, nil, parser.AllErrors)
-	if err != nil {
-		return "", err
-	}
-	return src.Name.Name, nil
-}
-
-// parsePackage loads package specified by path, parses it and populates
-// corresponding imports and importedInterfaces into the fileParser.
-func (pkp *PkParser) ParsePackageByPath(path string) error {
+func (pkp *PkParser) parsePackageByPath(path string, deep ...int) error {
 
 	if pkp.srcDir == "" {
-		panic("srcDir is empty")
 		return errors.New("srcDir is empty")
 	}
 
+	deep = append(deep, 3)
 	path = strings.Trim(path, `"`)
-
-	fmt.Printf("ParsePackageByPath. pkp.srcDir: %s, path: --%s--\n", pkp.srcDir, path)
 
 	impPkg, err := build.Import(path, pkp.srcDir, build.FindOnly)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("ParsePackageByPath. impPkg.Dir: %+v\n", impPkg)
-	fmt.Printf("ParsePackageByPath. impPkg.Dir: %s, impPkg.Name: %s, impPkg.Goroot: %t\n", impPkg.Dir, impPkg.Name, impPkg.Goroot)
+	pkp.debug("ParsePackageByPath. impPkg.Dir: %+v\n", impPkg)
+	pkp.debug("ParsePackageByPath. impPkg.Dir: --%s--, impPkg.Name: %s, impPkg.Goroot: %t\n", impPkg.Dir, impPkg.Name, impPkg.Goroot)
 
-	if impPkg.Goroot {
-		// package from std lib
+	if pkp.parsedDir[impPkg.Dir] || impPkg.Goroot {
 		return nil
 	}
 
-	_, err = pkp.parsePackage(impPkg.Dir, impPkg.Name)
-	return err
+	return pkp._parsePackage(impPkg.Dir, path, deep[0])
 }
 
-func (pkp *PkParser) ParsePackageByFile(fileName string) (*ast.Package, error) {
-	fmt.Printf("ParsePackage.......... %s\n", fileName)
+func (pkp *PkParser) parsePackage(srcIn string, path ...string) error {
+	path = append(path, "")
+	return pkp._parsePackage(srcIn, path[0], pkp.deep)
+}
 
-	if p, find := pkp.ByFile(fileName); find {
-		return p, nil
+func (pkp *PkParser) _parsePackage(srcIn, path string, deep int) error {
+
+	deep--
+	if deep < 0 {
+		return nil
 	}
 
-	pkgName, err := extractPackageNamByFile(fileName)
+	src, err := filepath.Abs(srcIn)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	fmt.Printf("pkgName: %s\n", pkgName)
+	if itIsFile, err := isFile(src); err != nil {
+		return err
+	} else if itIsFile {
+		src = filepath.Dir(src)
+	}
 
-	srcDir, err := filepath.Abs(filepath.Dir(fileName))
+	srcDir, err := filepath.Abs(src)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting source directory: %v", err)
+		panic(fmt.Sprintf("receivers has got wrong dir: %v", err))
 	}
 
-	fmt.Printf("ParsePackageByFile. pkgName: %s, srcDir: %s\n", pkgName, srcDir)
-
-	imports, err := pkp.parsePackage(srcDir, pkgName)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, oneFile := range imports {
-		if err := pkp.ParsePackageByPath(oneFile.path); err != nil {
-			return nil, err
+	if pkp.parsedDir[srcDir] {
+		if path != "" {
+			pkp.setPathByDir(srcDir, path)
 		}
+		return nil
 	}
 
-	p, find := pkp.ByFile(fileName)
-	if !find {
-		err = fmt.Errorf("failed getting file %s", fileName)
+	pkp.debug("ParsePackage. srcDir: %s\n", srcDir)
+
+	filter := func(file os.FileInfo) bool {
+		return !strings.HasSuffix(file.Name(), "_test.go")
 	}
-	return p, err
-}
 
-type OneFile struct {
-	file, pckName, path, alias string
-}
-
-func (pkp *PkParser) parsePackage(srcDir, pkgName string) ([]OneFile, error) {
-
-	imports := make([]OneFile, 0)
-
-	pkp.Lock()
-	defer pkp.Unlock()
-
-	fmt.Printf("ParsePackage. pkgName: %s, srcDir: %s\n", pkgName, srcDir)
-
-	parsed, err := parser.ParseDir(token.NewFileSet(), srcDir, nil, parser.AllErrors)
+	parsed, err := parser.ParseDir(token.NewFileSet(), srcDir, filter, parser.AllErrors)
 	if err != nil {
-		return imports, err
+		return err
 	}
 
-	fmt.Printf("\nParsed: %+v\n\n", parsed)
-
-	//if _, find := parsed[pkgName]; !find {
-	//	return imports, fmt.Errorf("ParsePackage: not found pacakge %s in dir", pkgName)
-	//}
+	pkp.parsedDir[srcDir] = true
 
 	for _, p := range parsed {
 
-		fmt.Printf("\nparsed: %s\n", p.Name)
-		fmt.Printf("Imports PP: %+v\n", p)
-		fmt.Printf("Files: %+v\n\n", p.Files)
+		pkp.debug("\nparsed: %s\n", p.Name)
+		pkp.debug("Imports PP: %+v\n", p)
+		pkp.debug("Files: %+v\n\n", p.Files)
 
-		pkp.parsed = append(pkp.parsed, p)
+		for srcFile, file := range p.Files {
 
-		for fileName, file := range p.Files {
-			fmt.Printf(".....fileName: %s, file.Imports: %+v\n", fileName, file.Imports)
+			//ast.SortImports(token.NewFileSet(), file)
 
-			for i, s := range file.Imports {
-				fmt.Printf("\n%d .....range Name: %T, Name: %+v\n", i, s.Name, s.Name)
-				fmt.Printf("%d .....range Doc: %T, Doc: %+v\n", i, s.Doc, s.Doc)
-				fmt.Printf("%d .....range Path: %T, Path: %+v\n", i, s.Path, s.Path)
-				fmt.Printf("%d .....range Comment: %T, Comment: %+v\n", i, s.Comment, s.Comment)
-				fmt.Printf("%d .....range s: %s\n", i, s)
-				pkg := file.Name.String()
-				alias := ""
-				if s.Name != nil {
-					alias = s.Name.String()
-				}
-				uri := s.Path.Value
-				fmt.Printf("fileName: %s, pkg: %s, s.Name: %s, uri: %s\n\n", fileName, pkg, alias, uri)
+			pkp.parsedFiles[srcFile] = &ParsedFile{
+				file:    file,
+				pkgName: p.Name,
+				path:    path,
+				srcDir:  srcDir,
+				srcFile: srcFile,
+			}
 
-				pkp.imp.Add(fileName, file.Name.String(), s.Path.Value, alias)
-				if file.Name.String() != "" {
-					imports = append(imports, OneFile{
-						file:    fileName,
-						pckName: file.Name.String(),
-						path:    s.Path.Value,
-						alias:   alias,
-					})
+			pkp.debug(".....fileName: %s, file.Imports: %+v\n", srcFile, file.Imports)
+
+			for _, s := range file.Imports {
+				if err := pkp.parsePackageByPath(s.Path.Value, deep); err != nil {
+					return err
 				}
 			}
 		}
 	}
 
-	return imports, nil
+	return nil
+}
+
+func isFile(path string) (bool, error) {
+	info, err := os.Stat(path)
+
+	if err != nil {
+		return false, err
+	}
+
+	if info.IsDir() {
+		return false, nil
+	}
+
+	return true, nil
 }
